@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Tasks</string>
+    <string name="channel_name">Tasks channel</string>
+    <string name="channel_description">Keeps Tasks alive</string>
+</resources>
