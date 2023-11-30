@@ -21,7 +21,7 @@ public class Steps {
             throw new IllegalArgumentException("unknown type '" + type + "'");
         }
 
-        Step step = null;
+        Step step;
         try {
             step = types.get(type).getDeclaredConstructor(Task.class).newInstance(root);
         } catch (IllegalAccessException | NoSuchMethodException | InvocationTargetException |

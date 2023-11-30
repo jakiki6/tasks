@@ -27,12 +27,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Set;
 
 public class TasksService extends Service {
     ServiceHandler handler;
     GlobalState globalState;
-    ArrayList<Task> tasks;
+    HashMap<String, Task> tasks;
 
     @Override
     public void onCreate() {
@@ -95,8 +97,10 @@ public class TasksService extends Service {
     }
 
     public void reload() {
-        for (Task task : tasks) {
-            task.lock.lock();
+        if (tasks != null) {
+            for (Task task : tasks.values()) {
+                task.lock.lock();
+            }
         }
 
         SharedPreferences prefs = this.getSharedPreferences("tasks", Context.MODE_PRIVATE);
@@ -106,11 +110,16 @@ public class TasksService extends Service {
             throw new RuntimeException(e);
         }
 
-        tasks = new ArrayList<>();
-        for (String taskString : prefs.getStringSet("tasks", Set.of())) {
-            try {
-                tasks.add(Task.deserialize(new JSONObject(taskString), globalState));
-            } catch (JSONException ignored) {}
+        tasks = new HashMap<>();
+        try {
+            JSONObject tasksJson = new JSONObject(prefs.getString("tasks", "{}"));
+            for (Iterator<String> it = tasksJson.keys(); it.hasNext(); ) {
+                String id = it.next();
+
+                tasks.put(id, Task.deserialize(new JSONObject(tasksJson.getString(id)), globalState));
+            }
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
         }
     }
 }
