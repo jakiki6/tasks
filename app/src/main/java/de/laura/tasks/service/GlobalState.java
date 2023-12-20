@@ -1,18 +1,13 @@
-package de.laura.tasks.tasks;
+package de.laura.tasks.service;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Parcel;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Objects;
-
-import de.laura.tasks.service.TasksService;
 
 public class GlobalState {
     HashMap<String, Object> variables = new HashMap<>();

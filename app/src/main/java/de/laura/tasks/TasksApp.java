@@ -11,7 +11,7 @@ import android.os.Messenger;
 import de.laura.tasks.service.TasksService;
 
 public class TasksApp extends Application {
-    Messenger messenger;
+    public Messenger messenger;
 
     @Override
     public void onCreate() {

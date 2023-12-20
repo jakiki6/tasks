@@ -4,37 +4,38 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.Message;
 import android.os.Messenger;
 import android.widget.Toast;
 
-import de.laura.tasks.MainActivity;
+import de.laura.tasks.ui.MainActivity;
 import de.laura.tasks.R;
-import de.laura.tasks.tasks.GlobalState;
-import de.laura.tasks.tasks.Task;
+import de.laura.tasks.bindings.Bindings;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.caoccao.javet.exceptions.JavetException;
+import com.caoccao.javet.interop.V8Host;
+import com.caoccao.javet.interop.V8Runtime;
+import com.caoccao.javet.values.reference.V8Script;
+import com.caoccao.javet.values.reference.V8ValueFunction;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Set;
 
 public class TasksService extends Service {
     ServiceHandler handler;
     GlobalState globalState;
-    HashMap<String, Task> tasks;
+
+    V8Runtime runtime;
+    V8Script scripts;
+    Bindings bindings;
+    public HashMap<String, ArrayList<V8ValueFunction>> events;
 
     @Override
     public void onCreate() {
@@ -44,13 +45,16 @@ public class TasksService extends Service {
         handler = new ServiceHandler(thread.getLooper(), this);
 
         Intent notificationIntent = new Intent(this, MainActivity.class);
+        Intent stopIntent = new Intent(this, MainActivity.class);
+        stopIntent.putExtra("action", "stop");
 
         NotificationChannel channel = new NotificationChannel("tasks", getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW);
         channel.setDescription(getString(R.string.channel_description));
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         notificationManager.createNotificationChannel(channel);
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent pendingIntentOpen = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent pendingIntentStop = PendingIntent.getActivity(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, new NotificationCompat.Builder(this,
@@ -59,7 +63,8 @@ public class TasksService extends Service {
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentTitle(getString(R.string.app_name))
                     .setContentText("Service is running background")
-                    .setContentIntent(pendingIntent)
+                    .setContentIntent(pendingIntentOpen)
+                    .addAction(new NotificationCompat.Action(0, "Stop", pendingIntentStop))
                     .build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
             startForeground(1, new NotificationCompat.Builder(this,
@@ -68,17 +73,10 @@ public class TasksService extends Service {
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentTitle(getString(R.string.app_name))
                     .setContentText("Service is running background")
-                    .setContentIntent(pendingIntent)
+                    .setContentIntent(pendingIntentOpen)
+                    .addAction(new NotificationCompat.Action(0, "Stop", pendingIntentStop))
                     .build());
         }
-
-        reload();
-        getSharedPreferences("tasks", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(new SharedPreferences.OnSharedPreferenceChangeListener() {
-            @Override
-            public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, @Nullable String key) {
-                reload();
-            }
-        });
 
         super.onCreate();
     }
@@ -86,8 +84,13 @@ public class TasksService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-
         Toast.makeText(this, "Tasks service killed!", Toast.LENGTH_SHORT).show();
+
+        try {
+            runtime.close();
+        } catch (JavetException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Nullable
@@ -96,30 +99,24 @@ public class TasksService extends Service {
         return new Messenger(handler).getBinder();
     }
 
-    public void reload() {
-        if (tasks != null) {
-            for (Task task : tasks.values()) {
-                task.lock.lock();
-            }
+    public void reload(String code) throws JavetException {
+        if (scripts != null) {
+            scripts.close();
+
+            scripts = null;
         }
 
-        SharedPreferences prefs = this.getSharedPreferences("tasks", Context.MODE_PRIVATE);
-        try {
-            globalState = GlobalState.deserialize(new JSONObject(prefs.getString("global_state", "{'vars':{}}")), this);
-        } catch (JSONException e) {
-            throw new RuntimeException(e);
+        if (runtime != null) {
+            runtime.close();
+
+            runtime = null;
         }
 
-        tasks = new HashMap<>();
-        try {
-            JSONObject tasksJson = new JSONObject(prefs.getString("tasks", "{}"));
-            for (Iterator<String> it = tasksJson.keys(); it.hasNext(); ) {
-                String id = it.next();
+        runtime = V8Host.getV8Instance().createV8Runtime();
+        events = new HashMap<>();
+        bindings = new Bindings(runtime, this);
+        scripts = runtime.getExecutor(code).compileV8Script();
 
-                tasks.put(id, Task.deserialize(new JSONObject(tasksJson.getString(id)), globalState));
-            }
-        } catch (JSONException e) {
-            throw new RuntimeException(e);
-        }
+        scripts.execute();
     }
 }
